@@ -13,7 +13,8 @@ if [ ! -x .venv/bin/python ]; then
   exit 1
 fi
 
-# Быстрый рабочий режим по умолчанию: small на CPU.
+# Рабочий режим по умолчанию: medium на CPU.
+# Для ускорения можно явно передать: --model small
 # Для максимального качества можно явно передать: --model large-v3
 has_model=0
 for arg in "$@"; do
@@ -26,5 +27,5 @@ done
 if [ "$has_model" -eq 1 ]; then
   PYTHONPATH=src .venv/bin/python -m protokolist.cli "$@"
 else
-  PYTHONPATH=src .venv/bin/python -m protokolist.cli "$@" --model small
+  PYTHONPATH=src .venv/bin/python -m protokolist.cli "$@" --model medium
 fi
