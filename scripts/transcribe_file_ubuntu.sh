@@ -4,7 +4,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 
 if [ $# -lt 1 ]; then
-  echo "Usage: ./scripts/transcribe_file_ubuntu.sh /path/to/audio.mp3"
+  echo "Usage: ./scripts/transcribe_file_ubuntu.sh input/meeting.mp3"
   exit 1
 fi
 
@@ -13,4 +13,4 @@ if [ ! -x .venv/bin/python ]; then
   exit 1
 fi
 
-PYTHONPATH=src .venv/bin/python -m protokolist.cli "$@"
+PYTHONPATH=src .venv/bin/python -m protokolist.cli process "$@"
