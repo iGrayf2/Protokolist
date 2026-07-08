@@ -178,6 +178,7 @@ def process_audio(args: argparse.Namespace) -> int:
             profile_path=args.profile,
             quality_report_txt_path=quality_txt_path,
             quality_report_json_path=quality_json_path,
+            zip_name_source_path=audio_path,
         )
         printer.ok(str(package_dir.resolve()))
         printer.ok(str(zip_path.resolve()))
