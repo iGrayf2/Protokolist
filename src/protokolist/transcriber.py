@@ -25,6 +25,9 @@ def transcribe_audio(
     model_size: str = "large-v3",
     language: str = "ru",
     compute_type: str = "int8",
+    device: str = "cpu",
+    cpu_threads: int = 0,
+    num_workers: int = 1,
     progress: ProgressCallback | None = None,
 ) -> TranscriptionResult:
     audio_path = Path(audio_path)
@@ -38,17 +41,17 @@ def transcribe_audio(
         if progress:
             progress(message)
 
-    log(f"Loading Whisper model: {model_size}")
+    log(f"Loading Whisper model: {model_size} ({device}, {compute_type})")
     model = WhisperModel(
         model_size,
-        device="cpu",
+        device=device,
         compute_type=compute_type,
-        cpu_threads=0,
-        num_workers=1,
+        cpu_threads=cpu_threads,
+        num_workers=num_workers,
     )
 
     initial_prompt = _build_initial_prompt()
-    log(f"Transcribing in max-quality mode: {audio_path.name}")
+    log(f"Transcribing: {audio_path.name}")
     raw_segments, info = model.transcribe(
         str(audio_path),
         language=language or None,
@@ -73,6 +76,10 @@ def transcribe_audio(
             log(f"Detected language: {info.language}")
         else:
             log(f"Detected language: {info.language} ({language_probability:.2f})")
+
+    duration = getattr(info, "duration", None)
+    if duration:
+        log(f"Audio duration: {duration / 60:.1f} min")
 
     segments: list[TranscriptSegment] = []
     for index, segment in enumerate(raw_segments, start=1):
@@ -104,7 +111,11 @@ def transcribe_audio(
             )
         )
         if index % 10 == 0:
-            log(f"Processed segments: {index}")
+            if duration:
+                percent = min(100.0, (segment.end / duration) * 100)
+                log(f"Transcribed: {segment.end / 60:.1f}/{duration / 60:.1f} min ({percent:.0f}%), segments: {index}")
+            else:
+                log(f"Processed segments: {index}")
 
     log(f"Done. Segments: {len(segments)}")
     return TranscriptionResult(
@@ -112,7 +123,7 @@ def transcribe_audio(
         model_size=model_size,
         language=info.language,
         language_probability=language_probability,
-        duration=getattr(info, "duration", None),
+        duration=duration,
         compute_type=compute_type,
         segments=segments,
     )
