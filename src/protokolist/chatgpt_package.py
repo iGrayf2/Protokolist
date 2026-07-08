@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import shutil
 import zipfile
-from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -60,8 +59,10 @@ def _build_context(result: TranscriptionResult, profile: dict[str, Any]) -> dict
     }
 
 
-def _build_task_md(profile: dict[str, Any]) -> str:
+def _build_task_md(profile: dict[str, Any], has_quality_report: bool = False) -> str:
     profile_name = profile.get("profile_name", "factory_moydod") if profile else "factory_moydod"
+    quality_file = "- `meeting.quality_report.txt` — отчет качества распознавания: короткая расшифровка относительно аудио, повторы в конце, возможные галлюцинации Whisper.\n" if has_quality_report else ""
+    quality_step = "\nПеред анализом проверь `meeting.quality_report.txt`, если файл есть. Если там указаны повторы в конце или короткая расшифровка относительно аудио, учитывай это в разделе контроля качества и не считай подозрительные повторы подтвержденными репликами.\n" if has_quality_report else ""
     return f"""# CHATGPT_TASK.md
 
 Ты получил пакет Protokolist для обработки длинного производственного совещания.
@@ -74,7 +75,7 @@ def _build_task_md(profile: dict[str, Any]) -> str:
 - `meeting.raw.json` — главный источник правды: сырые сегменты Whisper, таймкоды, слова и метаданные.
 - `meeting.raw.txt` — сырой текст для быстрого чтения.
 - `meeting.cleaned.txt` — текст после мягкой словарной очистки.
-
+{quality_file}
 ## Профиль
 
 Используй профиль: `{profile_name}`.
@@ -88,7 +89,7 @@ def _build_task_md(profile: dict[str, Any]) -> str:
 - на одном совещании обычно присутствуют только три мастера смены из шести;
 - не считай автоматически, что присутствовали все шесть;
 - решения, задачи, сроки и ответственных извлекай только из текста.
-
+{quality_step}
 ## Алгоритм работы
 
 Выполни обработку последовательно. Не перескакивай к финальному протоколу, пока не сделаешь анализ.
@@ -197,7 +198,8 @@ def _build_task_md(profile: dict[str, Any]) -> str:
 - уверенность в задачах;
 - фрагменты, которые нужно проверить вручную;
 - возможные ошибки распознавания;
-- возможные неверные назначения говорящих.
+- возможные неверные назначения говорящих;
+- предупреждения из `meeting.quality_report.txt`, если файл есть.
 
 ## Формат итогового ответа
 
@@ -232,7 +234,8 @@ def _build_task_md(profile: dict[str, Any]) -> str:
 """
 
 
-def _build_human_readme(meeting_name: str) -> str:
+def _build_human_readme(meeting_name: str, has_quality_report: bool = False) -> str:
+    quality = "\n- `meeting.quality_report.txt` — предупреждения о качестве распознавания.\n" if has_quality_report else ""
     return f"""# Пакет для ChatGPT
 
 Это готовый пакет Protokolist для записи `{meeting_name}`.
@@ -259,7 +262,7 @@ def _build_human_readme(meeting_name: str) -> str:
 - `meeting.raw.json` — главный сырой файл.
 - `meeting.raw.txt` — сырой текст.
 - `meeting.cleaned.txt` — очищенный текст.
-
+{quality}
 ## Важно
 
 Для длинных совещаний около часа ChatGPT может не обработать все за один проход. Если модель попросит продолжить — напиши `продолжай`.
@@ -274,6 +277,8 @@ def build_chatgpt_package(
     cleaned_txt_path: str | Path,
     meeting_dir: str | Path,
     profile_path: str | Path = "profiles/factory_moydod.json",
+    quality_report_txt_path: str | Path | None = None,
+    quality_report_json_path: str | Path | None = None,
 ) -> tuple[Path, Path]:
     meeting_dir = Path(meeting_dir)
     package_dir = meeting_dir / PACKAGE_DIR_NAME
@@ -283,14 +288,20 @@ def build_chatgpt_package(
 
     profile = load_profile(profile_path)
     context = _build_context(result, profile)
+    has_quality_report = quality_report_txt_path is not None and Path(quality_report_txt_path).exists()
 
     shutil.copy2(raw_json_path, package_dir / "meeting.raw.json")
     shutil.copy2(raw_txt_path, package_dir / "meeting.raw.txt")
     shutil.copy2(cleaned_txt_path, package_dir / "meeting.cleaned.txt")
 
+    if quality_report_txt_path and Path(quality_report_txt_path).exists():
+        shutil.copy2(quality_report_txt_path, package_dir / "meeting.quality_report.txt")
+    if quality_report_json_path and Path(quality_report_json_path).exists():
+        shutil.copy2(quality_report_json_path, package_dir / "meeting.quality_report.json")
+
     _write_json(package_dir / "meeting_context.json", context)
-    (package_dir / TASK_FILE_NAME).write_text(_build_task_md(profile), encoding="utf-8")
-    (package_dir / "README.md").write_text(_build_human_readme(Path(result.audio_path).name), encoding="utf-8")
+    (package_dir / TASK_FILE_NAME).write_text(_build_task_md(profile, has_quality_report=has_quality_report), encoding="utf-8")
+    (package_dir / "README.md").write_text(_build_human_readme(Path(result.audio_path).name, has_quality_report=has_quality_report), encoding="utf-8")
 
     # Extra compact transcript for quick human inspection.
     (package_dir / "meeting.cleaned_with_timestamps.txt").write_text(
