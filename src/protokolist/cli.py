@@ -13,6 +13,7 @@ from .audio_preprocess import prepare_audio_for_whisper
 from .chatgpt_package import build_chatgpt_package, create_meeting_output_dir
 from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
+from .quality import analyze_transcription_quality, write_quality_report
 from .raw_exporters import write_raw_json, write_raw_txt
 from .transcriber import transcribe_audio
 
@@ -88,6 +89,7 @@ def _print_run_header(args: argparse.Namespace, audio_path: Path, printer: CliPr
     printer.info(f"Compute type: {args.compute_type}")
     printer.info(f"CPU threads:  {'auto' if args.cpu_threads == 0 else args.cpu_threads}")
     printer.info(f"Preprocess:   {'off' if args.no_preprocess else 'ffmpeg mono WAV 16 kHz'}")
+    printer.info(f"Safe mode:    {'on' if args.safe_mode else 'off'}")
 
 
 def process_audio(args: argparse.Namespace) -> int:
@@ -100,7 +102,7 @@ def process_audio(args: argparse.Namespace) -> int:
     started_at = time.monotonic()
     _print_run_header(args, audio_path, printer)
 
-    total_stages = 7
+    total_stages = 8
 
     try:
         printer.stage(1, total_stages, "Подготовка папки встречи")
@@ -129,23 +131,35 @@ def process_audio(args: argparse.Namespace) -> int:
             device=args.device,
             cpu_threads=args.cpu_threads,
             num_workers=args.num_workers,
+            safe_mode=args.safe_mode,
             progress=printer.info,
         )
         if whisper_audio_path != audio_path:
             result = replace(result, audio_path=f"{audio_path} -> {whisper_audio_path}")
         printer.ok(f"Распознано сегментов: {len(result.segments)}")
 
-        printer.stage(4, total_stages, "Сохранение RAW-артефактов")
+        printer.stage(4, total_stages, "Проверка качества распознавания")
+        quality_report = analyze_transcription_quality(result)
+        quality_json_path, quality_txt_path = write_quality_report(quality_report, artifacts_dir)
+        if quality_report.warnings:
+            for warning in quality_report.warnings:
+                printer.warn(f"{warning.code}: {warning.message}")
+        else:
+            printer.ok("Критичных предупреждений не найдено")
+        printer.ok(str(quality_txt_path.resolve()))
+        printer.ok(str(quality_json_path.resolve()))
+
+        printer.stage(5, total_stages, "Сохранение RAW-артефактов")
         raw_json_path = write_raw_json(result, artifacts_dir / "meeting.raw.json")
         raw_txt_path = write_raw_txt(result, artifacts_dir / "meeting.raw.txt")
         printer.ok(str(raw_json_path.resolve()))
         printer.ok(str(raw_txt_path.resolve()))
 
-        printer.stage(5, total_stages, "Мягкая словарная очистка")
+        printer.stage(6, total_stages, "Мягкая словарная очистка")
         cleaned_segments = cleanup_segments(result.segments)
         printer.ok("Очистка выполнена. RAW не изменялся")
 
-        printer.stage(6, total_stages, "Экспорт TXT/SRT/DOCX")
+        printer.stage(7, total_stages, "Экспорт TXT/SRT/DOCX")
         cleaned_txt_path = write_txt(cleaned_segments, artifacts_dir / "meeting.cleaned.txt")
         srt_path = write_srt(cleaned_segments, artifacts_dir / "meeting.cleaned.srt")
         docx_path = write_docx(cleaned_segments, artifacts_dir / "meeting.cleaned.docx")
@@ -153,7 +167,7 @@ def process_audio(args: argparse.Namespace) -> int:
         printer.ok(str(srt_path.resolve()))
         printer.ok(str(docx_path.resolve()))
 
-        printer.stage(7, total_stages, "Сборка CHATGPT_PACKAGE и ZIP")
+        printer.stage(8, total_stages, "Сборка CHATGPT_PACKAGE и ZIP")
         package_dir, zip_path = build_chatgpt_package(
             result=result,
             cleaned_segments=cleaned_segments,
@@ -162,6 +176,8 @@ def process_audio(args: argparse.Namespace) -> int:
             cleaned_txt_path=cleaned_txt_path,
             meeting_dir=meeting_dir,
             profile_path=args.profile,
+            quality_report_txt_path=quality_txt_path,
+            quality_report_json_path=quality_json_path,
         )
         printer.ok(str(package_dir.resolve()))
         printer.ok(str(zip_path.resolve()))
@@ -296,6 +312,7 @@ def add_process_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--profile", default="profiles/factory_moydod.json", help="Путь к профилю предприятия")
     parser.add_argument("--no-preprocess", action="store_true", help="Отключить ffmpeg-подготовку WAV и передать исходный файл в Whisper")
+    parser.add_argument("--safe-mode", action="store_true", help="Снизить риск повторов/галлюцинаций на шумных записях")
     parser.add_argument("--quiet", action="store_true", help="Минимальный вывод")
     parser.set_defaults(func=process_audio)
 
