@@ -1,23 +1,32 @@
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Iterable
+from typing import Callable
 
 from faster_whisper import WhisperModel
 
-from .segments import TranscriptSegment
+from .cleanup import load_dictionary
+from .segments import TranscriptionResult, TranscriptSegment, TranscriptWord
 
 ProgressCallback = Callable[[str], None]
+
+
+def _build_initial_prompt() -> str | None:
+    dictionary = load_dictionary()
+    preferred_terms = dictionary.get("preferred_terms", [])
+    if not preferred_terms:
+        return None
+    return "В записи могут встречаться термины: " + ", ".join(preferred_terms)
 
 
 def transcribe_audio(
     audio_path: str | Path,
     output_dir: str | Path | None = None,
-    model_size: str = "small",
+    model_size: str = "large-v3",
     language: str = "ru",
     compute_type: str = "int8",
     progress: ProgressCallback | None = None,
-) -> list[TranscriptSegment]:
+) -> TranscriptionResult:
     audio_path = Path(audio_path)
     if not audio_path.exists():
         raise FileNotFoundError(f"Audio file not found: {audio_path}")
@@ -38,31 +47,72 @@ def transcribe_audio(
         num_workers=1,
     )
 
-    log(f"Transcribing: {audio_path.name}")
+    initial_prompt = _build_initial_prompt()
+    log(f"Transcribing in max-quality mode: {audio_path.name}")
     raw_segments, info = model.transcribe(
         str(audio_path),
         language=language or None,
+        task="transcribe",
         vad_filter=True,
-        beam_size=5,
-        word_timestamps=False,
+        vad_parameters={
+            "min_silence_duration_ms": 700,
+            "speech_pad_ms": 400,
+        },
+        beam_size=10,
+        best_of=10,
+        patience=1.2,
+        temperature=[0.0, 0.2, 0.4],
+        condition_on_previous_text=True,
+        word_timestamps=True,
+        initial_prompt=initial_prompt,
     )
 
-    log(f"Detected language: {info.language} ({info.language_probability:.2f})")
+    language_probability = getattr(info, "language_probability", None)
+    if info.language:
+        if language_probability is None:
+            log(f"Detected language: {info.language}")
+        else:
+            log(f"Detected language: {info.language} ({language_probability:.2f})")
+
     segments: list[TranscriptSegment] = []
     for index, segment in enumerate(raw_segments, start=1):
         text = segment.text.strip()
         if not text:
             continue
-        segments.append(TranscriptSegment(start=segment.start, end=segment.end, text=text))
+
+        words: list[TranscriptWord] = []
+        for word in segment.words or []:
+            words.append(
+                TranscriptWord(
+                    start=getattr(word, "start", None),
+                    end=getattr(word, "end", None),
+                    word=getattr(word, "word", "").strip(),
+                    probability=getattr(word, "probability", None),
+                )
+            )
+
+        segments.append(
+            TranscriptSegment(
+                start=segment.start,
+                end=segment.end,
+                text=text,
+                raw_text=text,
+                avg_logprob=getattr(segment, "avg_logprob", None),
+                no_speech_prob=getattr(segment, "no_speech_prob", None),
+                compression_ratio=getattr(segment, "compression_ratio", None),
+                words=words,
+            )
+        )
         if index % 10 == 0:
             log(f"Processed segments: {index}")
 
     log(f"Done. Segments: {len(segments)}")
-    return segments
-
-
-def plain_text(segments: Iterable[TranscriptSegment]) -> str:
-    lines: list[str] = []
-    for seg in segments:
-        lines.append(seg.text)
-    return "\n".join(lines).strip() + "\n"
+    return TranscriptionResult(
+        audio_path=str(audio_path),
+        model_size=model_size,
+        language=info.language,
+        language_probability=language_probability,
+        duration=getattr(info, "duration", None),
+        compute_type=compute_type,
+        segments=segments,
+    )
