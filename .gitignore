@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+ENV/
+
+# Build
+build/
+dist/
+*.spec
+
+# App output
+output/
+recordings/
+models/
+*.mp3
+*.wav
+*.m4a
+*.ogg
+*.flac
+*.mp4
+*.webm
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
