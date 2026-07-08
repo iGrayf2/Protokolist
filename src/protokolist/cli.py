@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib.metadata
 import shutil
 import subprocess
 import sys
@@ -13,6 +14,8 @@ from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
 from .raw_exporters import write_raw_json, write_raw_txt
 from .transcriber import transcribe_audio
+
+APP_VERSION = "0.3.0"
 
 
 @dataclass(slots=True)
@@ -35,6 +38,12 @@ class CliPrinter:
     def ok(self, message: str) -> None:
         self.line(f"  ✔ {message}")
 
+    def warn(self, message: str) -> None:
+        self.line(f"  ! {message}")
+
+    def fail(self, message: str) -> None:
+        self.line(f"  ✘ {message}")
+
     def info(self, message: str) -> None:
         self.line(f"  {message}")
 
@@ -51,15 +60,24 @@ def _format_elapsed(seconds: float) -> str:
     return f"{minutes:02d}:{secs:02d}"
 
 
-def _check_ffmpeg(printer: CliPrinter) -> None:
-    if shutil.which("ffmpeg"):
-        printer.ok("ffmpeg найден")
-        return
-    printer.info("ffmpeg не найден. Установи: sudo apt install -y ffmpeg")
+def _safe_distribution_version(name: str) -> str | None:
+    try:
+        return importlib.metadata.version(name)
+    except importlib.metadata.PackageNotFoundError:
+        return None
+
+
+def _check_ffmpeg(printer: CliPrinter) -> bool:
+    path = shutil.which("ffmpeg")
+    if path:
+        printer.ok(f"ffmpeg найден: {path}")
+        return True
+    printer.fail("ffmpeg не найден. Установи: sudo apt install -y ffmpeg")
+    return False
 
 
 def _print_run_header(args: argparse.Namespace, audio_path: Path, printer: CliPrinter) -> None:
-    printer.title("Protokolist CLI")
+    printer.title(f"Protokolist CLI {APP_VERSION}")
     printer.info(f"Input:        {audio_path}")
     printer.info(f"Output root:  {Path(args.output_dir)}")
     printer.info(f"Profile:      {args.profile}")
@@ -180,6 +198,95 @@ def collect_hardware(args: argparse.Namespace) -> int:
     return 0
 
 
+def run_doctor(args: argparse.Namespace) -> int:
+    printer = CliPrinter()
+    root = Path.cwd()
+    checks_failed = 0
+
+    printer.title(f"Protokolist doctor {APP_VERSION}")
+
+    if sys.version_info >= (3, 10):
+        printer.ok(f"Python {sys.version.split()[0]}")
+    else:
+        printer.fail(f"Python {sys.version.split()[0]} слишком старый")
+        checks_failed += 1
+
+    if not _check_ffmpeg(printer):
+        checks_failed += 1
+
+    faster_whisper_version = _safe_distribution_version("faster-whisper")
+    if faster_whisper_version:
+        printer.ok(f"faster-whisper {faster_whisper_version}")
+    else:
+        printer.fail("faster-whisper не установлен")
+        checks_failed += 1
+
+    docx_version = _safe_distribution_version("python-docx")
+    if docx_version:
+        printer.ok(f"python-docx {docx_version}")
+    else:
+        printer.fail("python-docx не установлен")
+        checks_failed += 1
+
+    for folder_name in ["input", "output", "logs", "models", "cache"]:
+        folder = root / folder_name
+        if folder.exists() and folder.is_dir():
+            printer.ok(f"Папка есть: {folder_name}/")
+        else:
+            printer.warn(f"Папка отсутствует, будет нужна: {folder_name}/")
+
+    profile_path = Path(args.profile)
+    if profile_path.exists():
+        printer.ok(f"Профиль найден: {profile_path}")
+    else:
+        printer.fail(f"Профиль не найден: {profile_path}")
+        checks_failed += 1
+
+    dictionary_path = Path(args.dictionary)
+    if dictionary_path.exists():
+        printer.ok(f"Словарь найден: {dictionary_path}")
+    else:
+        printer.warn(f"Словарь не найден: {dictionary_path}")
+
+    usage = shutil.disk_usage(root)
+    free_gb = usage.free / 1024 / 1024 / 1024
+    if free_gb >= 20:
+        printer.ok(f"Свободно на диске: {free_gb:.1f} ГБ")
+    else:
+        printer.warn(f"Свободно на диске мало: {free_gb:.1f} ГБ")
+
+    if shutil.which("nvidia-smi"):
+        printer.ok("nvidia-smi найден")
+    else:
+        printer.warn("nvidia-smi не найден, рабочий режим по умолчанию: CPU")
+
+    printer.title("Итог")
+    if checks_failed:
+        printer.fail(f"Есть критичные проблемы: {checks_failed}")
+        return 1
+    printer.ok("Окружение выглядит рабочим")
+    return 0
+
+
+def show_version(_: argparse.Namespace) -> int:
+    print(f"Protokolist {APP_VERSION}")
+    return 0
+
+
+def add_process_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("audio", help="Путь к аудио или видео файлу")
+    parser.add_argument("--model", default="large-v3", choices=["tiny", "base", "small", "medium", "large-v3"])
+    parser.add_argument("--language", default="ru")
+    parser.add_argument("--output-dir", default="output")
+    parser.add_argument("--compute-type", default="int8")
+    parser.add_argument("--device", default="cpu", choices=["cpu", "cuda", "auto"])
+    parser.add_argument("--cpu-threads", type=int, default=0, help="0 = auto")
+    parser.add_argument("--num-workers", type=int, default=1)
+    parser.add_argument("--profile", default="profiles/factory_moydod.json", help="Путь к профилю предприятия")
+    parser.add_argument("--quiet", action="store_true", help="Минимальный вывод")
+    parser.set_defaults(func=process_audio)
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="protokolist",
@@ -188,36 +295,35 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command")
 
     process = subparsers.add_parser("process", help="Обработать аудио/видео и собрать ChatGPT ZIP")
-    process.add_argument("audio", help="Путь к аудио или видео файлу")
-    process.add_argument("--model", default="large-v3", choices=["tiny", "base", "small", "medium", "large-v3"])
-    process.add_argument("--language", default="ru")
-    process.add_argument("--output-dir", default="output")
-    process.add_argument("--compute-type", default="int8")
-    process.add_argument("--device", default="cpu", choices=["cpu", "cuda", "auto"])
-    process.add_argument("--cpu-threads", type=int, default=0, help="0 = auto")
-    process.add_argument("--num-workers", type=int, default=1)
-    process.add_argument("--profile", default="profiles/factory_moydod.json", help="Путь к профилю предприятия")
-    process.add_argument("--quiet", action="store_true", help="Минимальный вывод")
-    process.set_defaults(func=process_audio)
+    add_process_arguments(process)
+
+    doctor = subparsers.add_parser("doctor", help="Проверить окружение перед обработкой")
+    doctor.add_argument("--profile", default="profiles/factory_moydod.json")
+    doctor.add_argument("--dictionary", default="config/dictionary.json")
+    doctor.set_defaults(func=run_doctor)
 
     hardware = subparsers.add_parser("hardware", help="Собрать отчет по железу Ubuntu-машины")
     hardware.add_argument("--output", default="protokolist_hardware.txt")
     hardware.set_defaults(func=collect_hardware)
+
+    version = subparsers.add_parser("version", help="Показать версию Protokolist")
+    version.set_defaults(func=show_version)
 
     return parser
 
 
 def main() -> None:
     parser = build_parser()
-    args = parser.parse_args()
+
+    # Main UX: `protokolist input/meeting.mp3` without a required `process` word.
+    if len(sys.argv) > 1 and sys.argv[1] not in {"process", "doctor", "hardware", "version", "-h", "--help"}:
+        args = parser.parse_args(["process", *sys.argv[1:]])
+    else:
+        args = parser.parse_args()
 
     if args.command is None:
-        # Backward compatibility: `python -m protokolist.cli input/meeting.mp3`.
-        if len(sys.argv) > 1 and not sys.argv[1].startswith("-"):
-            args = parser.parse_args(["process", *sys.argv[1:]])
-        else:
-            parser.print_help()
-            raise SystemExit(2)
+        parser.print_help()
+        raise SystemExit(2)
 
     raise SystemExit(args.func(args))
 
