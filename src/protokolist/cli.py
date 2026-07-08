@@ -9,6 +9,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+from .audio_preprocess import prepare_audio_for_whisper
 from .chatgpt_package import build_chatgpt_package, create_meeting_output_dir
 from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
@@ -86,6 +87,7 @@ def _print_run_header(args: argparse.Namespace, audio_path: Path, printer: CliPr
     printer.info(f"Device:       {args.device}")
     printer.info(f"Compute type: {args.compute_type}")
     printer.info(f"CPU threads:  {'auto' if args.cpu_threads == 0 else args.cpu_threads}")
+    printer.info(f"Preprocess:   {'off' if args.no_preprocess else 'ffmpeg mono WAV 16 kHz'}")
 
 
 def process_audio(args: argparse.Namespace) -> int:
@@ -98,7 +100,7 @@ def process_audio(args: argparse.Namespace) -> int:
     started_at = time.monotonic()
     _print_run_header(args, audio_path, printer)
 
-    total_stages = 6
+    total_stages = 7
 
     try:
         printer.stage(1, total_stages, "Подготовка папки встречи")
@@ -107,11 +109,19 @@ def process_audio(args: argparse.Namespace) -> int:
         artifacts_dir = meeting_dir / "artifacts"
         artifacts_dir.mkdir(parents=True, exist_ok=True)
         printer.ok(f"Meeting folder: {meeting_dir.resolve()}")
-        _check_ffmpeg(printer)
 
-        printer.stage(2, total_stages, "Распознавание аудио через Faster-Whisper")
+        printer.stage(2, total_stages, "Предобработка аудио через ffmpeg")
+        if args.no_preprocess:
+            whisper_audio_path = audio_path
+            printer.warn("Предобработка отключена, Whisper получит исходный файл")
+            _check_ffmpeg(printer)
+        else:
+            whisper_audio_path = prepare_audio_for_whisper(audio_path, artifacts_dir)
+            printer.ok(str(whisper_audio_path.resolve()))
+
+        printer.stage(3, total_stages, "Распознавание аудио через Faster-Whisper")
         result = transcribe_audio(
-            audio_path=audio_path,
+            audio_path=whisper_audio_path,
             output_dir=artifacts_dir,
             model_size=args.model,
             language=args.language,
@@ -123,17 +133,17 @@ def process_audio(args: argparse.Namespace) -> int:
         )
         printer.ok(f"Распознано сегментов: {len(result.segments)}")
 
-        printer.stage(3, total_stages, "Сохранение RAW-артефактов")
+        printer.stage(4, total_stages, "Сохранение RAW-артефактов")
         raw_json_path = write_raw_json(result, artifacts_dir / "meeting.raw.json")
         raw_txt_path = write_raw_txt(result, artifacts_dir / "meeting.raw.txt")
         printer.ok(str(raw_json_path.resolve()))
         printer.ok(str(raw_txt_path.resolve()))
 
-        printer.stage(4, total_stages, "Мягкая словарная очистка")
+        printer.stage(5, total_stages, "Мягкая словарная очистка")
         cleaned_segments = cleanup_segments(result.segments)
         printer.ok("Очистка выполнена. RAW не изменялся")
 
-        printer.stage(5, total_stages, "Экспорт TXT/SRT/DOCX")
+        printer.stage(6, total_stages, "Экспорт TXT/SRT/DOCX")
         cleaned_txt_path = write_txt(cleaned_segments, artifacts_dir / "meeting.cleaned.txt")
         srt_path = write_srt(cleaned_segments, artifacts_dir / "meeting.cleaned.srt")
         docx_path = write_docx(cleaned_segments, artifacts_dir / "meeting.cleaned.docx")
@@ -141,7 +151,7 @@ def process_audio(args: argparse.Namespace) -> int:
         printer.ok(str(srt_path.resolve()))
         printer.ok(str(docx_path.resolve()))
 
-        printer.stage(6, total_stages, "Сборка CHATGPT_PACKAGE и ZIP")
+        printer.stage(7, total_stages, "Сборка CHATGPT_PACKAGE и ZIP")
         package_dir, zip_path = build_chatgpt_package(
             result=result,
             cleaned_segments=cleaned_segments,
@@ -283,6 +293,7 @@ def add_process_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--cpu-threads", type=int, default=0, help="0 = auto")
     parser.add_argument("--num-workers", type=int, default=1)
     parser.add_argument("--profile", default="profiles/factory_moydod.json", help="Путь к профилю предприятия")
+    parser.add_argument("--no-preprocess", action="store_true", help="Отключить ffmpeg-подготовку WAV и передать исходный файл в Whisper")
     parser.add_argument("--quiet", action="store_true", help="Минимальный вывод")
     parser.set_defaults(func=process_audio)
 
