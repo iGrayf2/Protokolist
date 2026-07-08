@@ -22,7 +22,7 @@ def _build_initial_prompt() -> str | None:
 def transcribe_audio(
     audio_path: str | Path,
     output_dir: str | Path | None = None,
-    model_size: str = "small",
+    model_size: str = "medium",
     language: str = "ru",
     compute_type: str = "int8",
     device: str = "cpu",
