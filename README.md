@@ -55,6 +55,7 @@ output/<дата>_<имя_записи>/
    ├── <имя>_chatgpt_package.zip
    │
    └── artifacts/
+       ├── prepared_audio.wav
        ├── meeting.raw.json
        ├── meeting.raw.txt
        ├── meeting.cleaned.txt
@@ -122,6 +123,16 @@ PYTHONPATH=src .venv/bin/python -m protokolist.cli input/meeting.mp3
 ```bash
 PYTHONPATH=src .venv/bin/python -m protokolist.cli process input/meeting.mp3
 ```
+
+Начиная с версии `0.3.0`, перед Whisper по умолчанию создается подготовленный файл `artifacts/prepared_audio.wav`: mono WAV 16 kHz. Исходная запись не изменяется.
+
+Предобработку можно отключить:
+
+```bash
+./scripts/transcribe_file_ubuntu.sh input/meeting.mp3 --no-preprocess
+```
+
+Подробности: `docs/audio_preprocessing.md`.
 
 Основные параметры:
 
@@ -260,6 +271,7 @@ CHATGPT_PACKAGE/
 Там сохраняются:
 
 ```text
+prepared_audio.wav
 meeting.raw.json
 meeting.raw.txt
 meeting.cleaned.txt
@@ -321,6 +333,9 @@ audio
 CLI command
    │
    ▼
+ffmpeg preprocessing
+   │
+   ▼
 transcriber.py
    │
    ▼
@@ -362,7 +377,7 @@ ChatGPT
 
 ### v0.3
 
-- [ ] ffmpeg-предобработка: mono WAV 16 kHz
+- [x] ffmpeg-предобработка: mono WAV 16 kHz
 - [ ] нормализация громкости
 - [ ] стабильная обработка длинных записей чанками
 - [ ] прогресс по длительности аудио
