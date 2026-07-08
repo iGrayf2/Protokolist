@@ -1,22 +1,44 @@
 # Python
+.venv/
+venv/
+ENV/
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 .Python
-.venv/
-venv/
-ENV/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
 
 # Build
 build/
 dist/
 *.spec
 
-# App output
-output/
+# Local environment
+.env
+.env.*
+
+# Protokolist local working data
+input/*
+!input/.gitkeep
+
+output/*
+!output/.gitkeep
+
+logs/*
+!logs/.gitkeep
+
+models/*
+!models/.gitkeep
+
+cache/*
+!cache/.gitkeep
+
 recordings/
-models/
+
+# Generated media and packages
 *.mp3
 *.wav
 *.m4a
@@ -24,6 +46,8 @@ models/
 *.flac
 *.mp4
 *.webm
+*.mkv
+*.zip
 
 # IDE
 .vscode/
