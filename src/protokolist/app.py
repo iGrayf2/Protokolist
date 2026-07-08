@@ -6,6 +6,7 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
 from .protocol_prompt import write_protocol_prompt
 from .transcriber import transcribe_audio
@@ -122,6 +123,9 @@ class ProtokolistApp(tk.Tk):
                 compute_type="int8",
                 progress=self._log_from_worker,
             )
+
+            self._log_from_worker("Applying transcript cleanup dictionary...")
+            segments = cleanup_segments(segments)
 
             stem = audio.stem
             files = [
