@@ -9,18 +9,26 @@ from tkinter import filedialog, messagebox, ttk
 from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
 from .protocol_prompt import write_protocol_prompt
+from .raw_exporters import write_raw_json, write_raw_txt
 from .transcriber import transcribe_audio
+
+
+QUALITY_PRESETS = {
+    "Максимум качества": {"model": "large-v3", "compute_type": "int8"},
+    "Качественно": {"model": "medium", "compute_type": "int8"},
+    "Быстро": {"model": "small", "compute_type": "int8"},
+}
 
 
 class ProtokolistApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Protokolist")
-        self.geometry("760x520")
-        self.minsize(700, 460)
+        self.geometry("820x540")
+        self.minsize(740, 480)
 
         self.audio_path = tk.StringVar()
-        self.model_size = tk.StringVar(value="small")
+        self.quality_preset = tk.StringVar(value="Максимум качества")
         self.language = tk.StringVar(value="ru")
         self.status = tk.StringVar(value="Ready")
         self.log_queue: queue.Queue[str] = queue.Queue()
@@ -43,15 +51,15 @@ class ProtokolistApp(tk.Tk):
         options = ttk.LabelFrame(root, text="Settings", padding=10)
         options.pack(fill=tk.X, pady=12)
 
-        ttk.Label(options, text="Model:").grid(row=0, column=0, sticky="w")
-        model_box = ttk.Combobox(
+        ttk.Label(options, text="Quality preset:").grid(row=0, column=0, sticky="w")
+        preset_box = ttk.Combobox(
             options,
-            textvariable=self.model_size,
-            values=["tiny", "base", "small", "medium", "large-v3"],
-            width=14,
+            textvariable=self.quality_preset,
+            values=list(QUALITY_PRESETS),
+            width=20,
             state="readonly",
         )
-        model_box.grid(row=0, column=1, sticky="w", padx=(8, 24))
+        preset_box.grid(row=0, column=1, sticky="w", padx=(8, 24))
 
         ttk.Label(options, text="Language:").grid(row=0, column=2, sticky="w")
         ttk.Entry(options, textvariable=self.language, width=8).grid(row=0, column=3, sticky="w", padx=(8, 24))
@@ -59,6 +67,10 @@ class ProtokolistApp(tk.Tk):
         ttk.Button(options, text="Transcribe", command=self._start_transcription).grid(row=0, column=4, sticky="e")
         options.columnconfigure(5, weight=1)
 
+        ttk.Label(
+            root,
+            text="Max quality is slower, but saves rich raw files for better final meeting minutes.",
+        ).pack(fill=tk.X)
         ttk.Label(root, textvariable=self.status).pack(fill=tk.X)
 
         log_frame = ttk.LabelFrame(root, text="Log", padding=8)
@@ -107,7 +119,6 @@ class ProtokolistApp(tk.Tk):
         if not audio.exists():
             messagebox.showerror("Protokolist", "Select an existing audio file")
             return
-
         self.log_text.delete("1.0", tk.END)
         self.worker = threading.Thread(target=self._run_transcription, args=(audio,), daemon=True)
         self.worker.start()
@@ -115,24 +126,30 @@ class ProtokolistApp(tk.Tk):
     def _run_transcription(self, audio: Path) -> None:
         try:
             output_dir = Path.cwd() / "output"
-            segments = transcribe_audio(
+            preset = QUALITY_PRESETS[self.quality_preset.get()]
+            result = transcribe_audio(
                 audio_path=audio,
                 output_dir=output_dir,
-                model_size=self.model_size.get(),
+                model_size=preset["model"],
                 language=self.language.get().strip() or "ru",
-                compute_type="int8",
+                compute_type=preset["compute_type"],
                 progress=self._log_from_worker,
             )
 
-            self._log_from_worker("Applying transcript cleanup dictionary...")
-            segments = cleanup_segments(segments)
-
             stem = audio.stem
-            files = [
-                write_txt(segments, output_dir / f"{stem}.txt"),
-                write_srt(segments, output_dir / f"{stem}.srt"),
-                write_docx(segments, output_dir / f"{stem}.docx"),
-                write_protocol_prompt(segments, output_dir / f"{stem}_protocol_prompt.md"),
+            raw_files = [
+                write_raw_json(result, output_dir / f"{stem}.raw.json"),
+                write_raw_txt(result, output_dir / f"{stem}.raw.txt"),
+            ]
+
+            self._log_from_worker("Applying transcript cleanup dictionary...")
+            cleaned_segments = cleanup_segments(result.segments)
+
+            files = raw_files + [
+                write_txt(cleaned_segments, output_dir / f"{stem}.cleaned.txt"),
+                write_srt(cleaned_segments, output_dir / f"{stem}.cleaned.srt"),
+                write_docx(cleaned_segments, output_dir / f"{stem}.cleaned.docx"),
+                write_protocol_prompt(cleaned_segments, output_dir / f"{stem}_protocol_prompt.md"),
             ]
             self._log_from_worker("Files created:")
             for file in files:
