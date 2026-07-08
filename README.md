@@ -126,6 +126,12 @@ PYTHONPATH=src .venv/bin/python -m protokolist.cli process input/meeting.mp3
 
 Начиная с версии `0.3.0`, перед Whisper по умолчанию создается подготовленный файл `artifacts/prepared_audio.wav`: mono WAV 16 kHz. Исходная запись не изменяется.
 
+В RAW metadata поле `audio_path` показывает связку исходника и подготовленного WAV:
+
+```text
+input/meeting.mp3 -> output/.../artifacts/prepared_audio.wav
+```
+
 Предобработку можно отключить:
 
 ```bash
@@ -167,7 +173,7 @@ PYTHONPATH=src .venv/bin/python -m protokolist.cli hardware
 
 ## Сбор информации о железе Ubuntu
 
-Чтобы собрать отчет по железу машины:
+Чтобы собрать отчет по железе машины:
 
 ```bash
 ./scripts/collect_hardware_ubuntu.sh
