@@ -13,4 +13,4 @@ if [ ! -x .venv/bin/python ]; then
   exit 1
 fi
 
-PYTHONPATH=src .venv/bin/python -m protokolist.cli process "$@"
+PYTHONPATH=src .venv/bin/python -m protokolist.cli "$@"
