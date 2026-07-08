@@ -22,7 +22,7 @@ def _build_initial_prompt() -> str | None:
 def transcribe_audio(
     audio_path: str | Path,
     output_dir: str | Path | None = None,
-    model_size: str = "large-v3",
+    model_size: str = "small",
     language: str = "ru",
     compute_type: str = "int8",
     device: str = "cpu",
@@ -55,9 +55,11 @@ def transcribe_audio(
     )
 
     initial_prompt = _build_initial_prompt()
-    beam_size = 5 if safe_mode else 10
-    best_of = 5 if safe_mode else 10
-    patience = 1.0 if safe_mode else 1.2
+    # Бывшие beam/best_of=10 давали качество, но сильно тормозили CPU.
+    # Новый дефолт быстрее и лучше подходит для регулярных часовых совещаний.
+    beam_size = 3 if safe_mode else 5
+    best_of = 3 if safe_mode else 5
+    patience = 1.0 if safe_mode else 1.1
     condition_on_previous_text = False if safe_mode else True
 
     log(f"Transcribing: {audio_path.name}")
