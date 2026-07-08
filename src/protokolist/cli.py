@@ -5,6 +5,7 @@ from pathlib import Path
 
 from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
+from .prompt_pipeline import write_prompt_pipeline
 from .protocol_prompt import write_protocol_prompt
 from .raw_exporters import write_raw_json, write_raw_txt
 from .transcriber import transcribe_audio
@@ -17,6 +18,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--language", default="ru")
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--compute-type", default="int8")
+    parser.add_argument("--profile", default="profiles/factory_moydod.json", help="Organization profile JSON path")
     return parser
 
 
@@ -46,9 +48,10 @@ def main() -> None:
     srt_path = write_srt(cleaned_segments, output_dir / f"{stem}.cleaned.srt")
     docx_path = write_docx(cleaned_segments, output_dir / f"{stem}.cleaned.docx")
     prompt_path = write_protocol_prompt(cleaned_segments, output_dir / f"{stem}_protocol_prompt.md")
+    pipeline_prompt_paths = write_prompt_pipeline(cleaned_segments, output_dir, stem, args.profile)
 
     print("\nFiles created:")
-    for path in [raw_json_path, raw_txt_path, txt_path, srt_path, docx_path, prompt_path]:
+    for path in [raw_json_path, raw_txt_path, txt_path, srt_path, docx_path, prompt_path, *pipeline_prompt_paths]:
         print(f"- {path.resolve()}")
 
 
