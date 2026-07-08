@@ -28,6 +28,7 @@ def transcribe_audio(
     device: str = "cpu",
     cpu_threads: int = 0,
     num_workers: int = 1,
+    safe_mode: bool = False,
     progress: ProgressCallback | None = None,
 ) -> TranscriptionResult:
     audio_path = Path(audio_path)
@@ -42,6 +43,9 @@ def transcribe_audio(
             progress(message)
 
     log(f"Loading Whisper model: {model_size} ({device}, {compute_type})")
+    if safe_mode:
+        log("Safe mode: on (reduced beam/best_of, no previous-text conditioning)")
+
     model = WhisperModel(
         model_size,
         device=device,
@@ -51,6 +55,11 @@ def transcribe_audio(
     )
 
     initial_prompt = _build_initial_prompt()
+    beam_size = 5 if safe_mode else 10
+    best_of = 5 if safe_mode else 10
+    patience = 1.0 if safe_mode else 1.2
+    condition_on_previous_text = False if safe_mode else True
+
     log(f"Transcribing: {audio_path.name}")
     raw_segments, info = model.transcribe(
         str(audio_path),
@@ -61,11 +70,11 @@ def transcribe_audio(
             "min_silence_duration_ms": 700,
             "speech_pad_ms": 400,
         },
-        beam_size=10,
-        best_of=10,
-        patience=1.2,
+        beam_size=beam_size,
+        best_of=best_of,
+        patience=patience,
         temperature=[0.0, 0.2, 0.4],
-        condition_on_previous_text=True,
+        condition_on_previous_text=condition_on_previous_text,
         word_timestamps=True,
         initial_prompt=initial_prompt,
     )
