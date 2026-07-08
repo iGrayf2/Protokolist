@@ -304,7 +304,7 @@ def show_version(_: argparse.Namespace) -> int:
 
 def add_process_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("audio", help="Путь к аудио или видео файлу")
-    parser.add_argument("--model", default="large-v3", choices=["tiny", "base", "small", "medium", "large-v3"])
+    parser.add_argument("--model", default="medium", choices=["tiny", "base", "small", "medium", "large-v3"])
     parser.add_argument("--language", default="ru")
     parser.add_argument("--output-dir", default="output")
     parser.add_argument("--compute-type", default="int8")
