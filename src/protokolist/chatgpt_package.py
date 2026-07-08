@@ -279,6 +279,7 @@ def build_chatgpt_package(
     profile_path: str | Path = "profiles/factory_moydod.json",
     quality_report_txt_path: str | Path | None = None,
     quality_report_json_path: str | Path | None = None,
+    zip_name_source_path: str | Path | None = None,
 ) -> tuple[Path, Path]:
     meeting_dir = Path(meeting_dir)
     package_dir = meeting_dir / PACKAGE_DIR_NAME
@@ -289,6 +290,7 @@ def build_chatgpt_package(
     profile = load_profile(profile_path)
     context = _build_context(result, profile)
     has_quality_report = quality_report_txt_path is not None and Path(quality_report_txt_path).exists()
+    display_source_path = Path(zip_name_source_path) if zip_name_source_path else Path(result.audio_path)
 
     shutil.copy2(raw_json_path, package_dir / "meeting.raw.json")
     shutil.copy2(raw_txt_path, package_dir / "meeting.raw.txt")
@@ -301,7 +303,7 @@ def build_chatgpt_package(
 
     _write_json(package_dir / "meeting_context.json", context)
     (package_dir / TASK_FILE_NAME).write_text(_build_task_md(profile, has_quality_report=has_quality_report), encoding="utf-8")
-    (package_dir / "README.md").write_text(_build_human_readme(Path(result.audio_path).name, has_quality_report=has_quality_report), encoding="utf-8")
+    (package_dir / "README.md").write_text(_build_human_readme(display_source_path.name, has_quality_report=has_quality_report), encoding="utf-8")
 
     # Extra compact transcript for quick human inspection.
     (package_dir / "meeting.cleaned_with_timestamps.txt").write_text(
@@ -309,7 +311,7 @@ def build_chatgpt_package(
         encoding="utf-8",
     )
 
-    zip_path = meeting_dir / f"{_safe_name(Path(result.audio_path).stem)}_chatgpt_package.zip"
+    zip_path = meeting_dir / f"{_safe_name(display_source_path.stem)}_chatgpt_package.zip"
     if zip_path.exists():
         zip_path.unlink()
     with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
