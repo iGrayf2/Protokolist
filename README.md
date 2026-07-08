@@ -4,6 +4,32 @@
 
 Protokolist не пытается быть обычной программой «аудио → текст». Его главная задача — получить максимально качественный RAW из записи совещания и собрать папку/архив, который можно сразу отправить в ChatGPT.
 
+## Рекомендуемое расположение
+
+На рабочей Ubuntu-машине проект лучше держать прямо в домашней папке:
+
+```text
+~/Protokolist/
+```
+
+Внутри репозитория создаются рабочие папки:
+
+```text
+~/Protokolist/
+├── input/     # сюда можно класть аудиозаписи
+├── output/    # сюда сохраняются пакеты для ChatGPT
+├── logs/      # будущие логи
+├── models/    # будущие локальные модели/кэш
+├── cache/     # временные данные
+├── src/
+├── scripts/
+├── profiles/
+├── config/
+└── .venv/
+```
+
+Папки `input`, `output`, `logs`, `models`, `cache` есть в репозитории только как пустая структура. Реальные записи, результаты, модели и логи не попадают в Git.
+
 Пользовательский сценарий теперь простой:
 
 ```text
@@ -58,6 +84,7 @@ Windows-скрипты пока остаются в репозитории, но
 ## Быстрый старт на Ubuntu
 
 ```bash
+cd ~
 git clone https://github.com/iGrayf2/Protokolist.git
 cd Protokolist
 chmod +x scripts/*.sh
@@ -73,7 +100,7 @@ chmod +x scripts/*.sh
 Запуск через CLI:
 
 ```bash
-./scripts/transcribe_file_ubuntu.sh /path/to/meeting.mp3
+./scripts/transcribe_file_ubuntu.sh input/meeting.mp3
 ```
 
 ## Что делать после обработки
@@ -256,6 +283,7 @@ ChatGPT
 - [x] пакет для ChatGPT
 - [x] zip-архив для загрузки в ChatGPT
 - [x] Ubuntu install/run scripts
+- [x] рабочие папки `input`, `output`, `logs`, `models`, `cache`
 
 ### v0.3
 
