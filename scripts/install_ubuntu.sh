@@ -5,7 +5,7 @@ cd "$(dirname "$0")/.."
 
 echo "Installing system packages..."
 sudo apt update
-sudo apt install -y python3 python3-venv python3-pip ffmpeg git python3-tk
+sudo apt install -y python3 python3-venv python3-pip ffmpeg git lshw pciutils usbutils
 
 echo "Creating local working folders..."
 mkdir -p input output logs models cache
@@ -31,5 +31,5 @@ echo "Recommended project location: ~/Protokolist"
 echo "Put audio files into:        ./input"
 echo "Results will be saved into: ./output"
 echo
-echo "Run GUI: ./scripts/run_gui_ubuntu.sh"
-echo "Run CLI: ./scripts/transcribe_file_ubuntu.sh input/meeting.mp3"
+echo "Run processing: ./scripts/transcribe_file_ubuntu.sh input/meeting.mp3"
+echo "Hardware report: ./scripts/collect_hardware_ubuntu.sh"
