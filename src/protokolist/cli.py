@@ -6,7 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from .audio_preprocess import prepare_audio_for_whisper
@@ -131,6 +131,8 @@ def process_audio(args: argparse.Namespace) -> int:
             num_workers=args.num_workers,
             progress=printer.info,
         )
+        if whisper_audio_path != audio_path:
+            result = replace(result, audio_path=f"{audio_path} -> {whisper_audio_path}")
         printer.ok(f"Распознано сегментов: {len(result.segments)}")
 
         printer.stage(4, total_stages, "Сохранение RAW-артефактов")
