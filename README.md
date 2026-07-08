@@ -93,6 +93,16 @@ chmod +x scripts/*.sh
 ./scripts/install_ubuntu.sh
 ```
 
+## Проверка окружения
+
+Перед первой длинной обработкой запусти:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m protokolist.cli doctor
+```
+
+Команда проверит Python, ffmpeg, зависимости, рабочие папки, профиль, словарь, свободное место и наличие `nvidia-smi`.
+
 ## Обработка записи
 
 Положи запись в `input/` и запусти:
@@ -102,6 +112,12 @@ chmod +x scripts/*.sh
 ```
 
 То же самое напрямую через Python-модуль:
+
+```bash
+PYTHONPATH=src .venv/bin/python -m protokolist.cli input/meeting.mp3
+```
+
+Служебный вариант с явной командой тоже поддерживается:
 
 ```bash
 PYTHONPATH=src .venv/bin/python -m protokolist.cli process input/meeting.mp3
@@ -129,6 +145,14 @@ cpu_threads: 0
 ```
 
 GT 710 не стоит рассматривать как полезную CUDA-карту для этого проекта, поэтому базовая рабочая стратегия — качественное CPU-распознавание.
+
+## Служебные команды
+
+```bash
+PYTHONPATH=src .venv/bin/python -m protokolist.cli version
+PYTHONPATH=src .venv/bin/python -m protokolist.cli doctor
+PYTHONPATH=src .venv/bin/python -m protokolist.cli hardware
+```
 
 ## Сбор информации о железе Ubuntu
 
@@ -294,7 +318,7 @@ RAW никогда не изменяется. Все исправления вы
 audio
    │
    ▼
-CLI process command
+CLI command
    │
    ▼
 transcriber.py
@@ -333,6 +357,8 @@ ChatGPT
 - [x] рабочие папки `input`, `output`, `logs`, `models`, `cache`
 - [x] CLI-only режим вместо GUI
 - [x] команда сбора информации о железе
+- [x] команда проверки окружения `doctor`
+- [x] прямой запуск `protokolist input/meeting.mp3`
 
 ### v0.3
 
