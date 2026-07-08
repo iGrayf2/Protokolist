@@ -1,4 +1,4 @@
-from protokolist.app import main
+from protokolist.cli import main
 
 
 if __name__ == "__main__":
