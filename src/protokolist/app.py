@@ -8,6 +8,7 @@ from tkinter import filedialog, messagebox, ttk
 
 from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
+from .prompt_pipeline import write_prompt_pipeline
 from .protocol_prompt import write_protocol_prompt
 from .raw_exporters import write_raw_json, write_raw_txt
 from .transcriber import transcribe_audio
@@ -69,7 +70,7 @@ class ProtokolistApp(tk.Tk):
 
         ttk.Label(
             root,
-            text="Max quality is slower, but saves rich raw files for better final meeting minutes.",
+            text="Max quality is slower, but saves rich raw files and staged prompts for better final meeting minutes.",
         ).pack(fill=tk.X)
         ttk.Label(root, textvariable=self.status).pack(fill=tk.X)
 
@@ -145,11 +146,15 @@ class ProtokolistApp(tk.Tk):
             self._log_from_worker("Applying transcript cleanup dictionary...")
             cleaned_segments = cleanup_segments(result.segments)
 
+            self._log_from_worker("Generating staged LLM prompts...")
+            pipeline_prompts = write_prompt_pipeline(cleaned_segments, output_dir, stem)
+
             files = raw_files + [
                 write_txt(cleaned_segments, output_dir / f"{stem}.cleaned.txt"),
                 write_srt(cleaned_segments, output_dir / f"{stem}.cleaned.srt"),
                 write_docx(cleaned_segments, output_dir / f"{stem}.cleaned.docx"),
                 write_protocol_prompt(cleaned_segments, output_dir / f"{stem}_protocol_prompt.md"),
+                *pipeline_prompts,
             ]
             self._log_from_worker("Files created:")
             for file in files:
