@@ -28,4 +28,14 @@ def cleanup_text(text: str, dictionary: dict | None = None) -> str:
 
 def cleanup_segments(segments: list[TranscriptSegment], dictionary: dict | None = None) -> list[TranscriptSegment]:
     dictionary = dictionary or load_dictionary()
-    return [replace(segment, text=cleanup_text(segment.text, dictionary)) for segment in segments]
+    cleaned_segments: list[TranscriptSegment] = []
+    for segment in segments:
+        raw_text = segment.raw_text or segment.text
+        cleaned_segments.append(
+            replace(
+                segment,
+                raw_text=raw_text,
+                text=cleanup_text(raw_text, dictionary),
+            )
+        )
+    return cleaned_segments
