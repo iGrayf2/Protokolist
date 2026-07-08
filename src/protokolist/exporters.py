@@ -12,7 +12,9 @@ def write_txt(segments: list[TranscriptSegment], path: str | Path) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8") as file:
         for seg in segments:
-            file.write(f"[{format_timestamp(seg.start)}] {seg.text}\n")
+            start = format_timestamp(seg.start, include_millis=True)
+            end = format_timestamp(seg.end, include_millis=True)
+            file.write(f"[{start} --> {end}] {seg.text}\n")
     return path
 
 
@@ -35,7 +37,9 @@ def write_docx(segments: list[TranscriptSegment], path: str | Path, title: str =
     document.add_heading(title, level=1)
     for seg in segments:
         paragraph = document.add_paragraph()
-        paragraph.add_run(f"[{format_timestamp(seg.start)}] ").bold = True
+        start = format_timestamp(seg.start, include_millis=True)
+        end = format_timestamp(seg.end, include_millis=True)
+        paragraph.add_run(f"[{start} --> {end}] ").bold = True
         paragraph.add_run(seg.text)
     document.save(path)
     return path
