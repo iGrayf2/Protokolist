@@ -6,10 +6,9 @@ from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
 
+from .chatgpt_package import build_chatgpt_package, create_meeting_output_dir
 from .cleanup import cleanup_segments
 from .exporters import write_docx, write_srt, write_txt
-from .prompt_pipeline import write_prompt_pipeline
-from .protocol_prompt import write_protocol_prompt
 from .raw_exporters import write_raw_json, write_raw_txt
 from .transcriber import transcribe_audio
 
@@ -25,8 +24,8 @@ class ProtokolistApp(tk.Tk):
     def __init__(self) -> None:
         super().__init__()
         self.title("Protokolist")
-        self.geometry("820x540")
-        self.minsize(740, 480)
+        self.geometry("860x560")
+        self.minsize(760, 500)
 
         self.audio_path = tk.StringVar()
         self.quality_preset = tk.StringVar(value="Максимум качества")
@@ -65,12 +64,12 @@ class ProtokolistApp(tk.Tk):
         ttk.Label(options, text="Language:").grid(row=0, column=2, sticky="w")
         ttk.Entry(options, textvariable=self.language, width=8).grid(row=0, column=3, sticky="w", padx=(8, 24))
 
-        ttk.Button(options, text="Transcribe", command=self._start_transcription).grid(row=0, column=4, sticky="e")
+        ttk.Button(options, text="Create ChatGPT package", command=self._start_transcription).grid(row=0, column=4, sticky="e")
         options.columnconfigure(5, weight=1)
 
         ttk.Label(
             root,
-            text="Max quality is slower, but saves rich raw files and staged prompts for better final meeting minutes.",
+            text="Creates a ready-to-upload ChatGPT package and zip for long production meetings.",
         ).pack(fill=tk.X)
         ttk.Label(root, textvariable=self.status).pack(fill=tk.X)
 
@@ -113,7 +112,7 @@ class ProtokolistApp(tk.Tk):
 
     def _start_transcription(self) -> None:
         if self.worker and self.worker.is_alive():
-            messagebox.showinfo("Protokolist", "Transcription is already running")
+            messagebox.showinfo("Protokolist", "Processing is already running")
             return
 
         audio = Path(self.audio_path.get().strip())
@@ -126,40 +125,46 @@ class ProtokolistApp(tk.Tk):
 
     def _run_transcription(self, audio: Path) -> None:
         try:
-            output_dir = Path.cwd() / "output"
+            output_root = Path.cwd() / "output"
+            meeting_dir = create_meeting_output_dir(output_root, audio)
+            artifacts_dir = meeting_dir / "artifacts"
+            artifacts_dir.mkdir(parents=True, exist_ok=True)
+
             preset = QUALITY_PRESETS[self.quality_preset.get()]
             result = transcribe_audio(
                 audio_path=audio,
-                output_dir=output_dir,
+                output_dir=artifacts_dir,
                 model_size=preset["model"],
                 language=self.language.get().strip() or "ru",
                 compute_type=preset["compute_type"],
                 progress=self._log_from_worker,
             )
 
-            stem = audio.stem
-            raw_files = [
-                write_raw_json(result, output_dir / f"{stem}.raw.json"),
-                write_raw_txt(result, output_dir / f"{stem}.raw.txt"),
-            ]
+            raw_json_path = write_raw_json(result, artifacts_dir / "meeting.raw.json")
+            raw_txt_path = write_raw_txt(result, artifacts_dir / "meeting.raw.txt")
 
             self._log_from_worker("Applying transcript cleanup dictionary...")
             cleaned_segments = cleanup_segments(result.segments)
 
-            self._log_from_worker("Generating staged LLM prompts...")
-            pipeline_prompts = write_prompt_pipeline(cleaned_segments, output_dir, stem)
+            cleaned_txt_path = write_txt(cleaned_segments, artifacts_dir / "meeting.cleaned.txt")
+            write_srt(cleaned_segments, artifacts_dir / "meeting.cleaned.srt")
+            write_docx(cleaned_segments, artifacts_dir / "meeting.cleaned.docx")
 
-            files = raw_files + [
-                write_txt(cleaned_segments, output_dir / f"{stem}.cleaned.txt"),
-                write_srt(cleaned_segments, output_dir / f"{stem}.cleaned.srt"),
-                write_docx(cleaned_segments, output_dir / f"{stem}.cleaned.docx"),
-                write_protocol_prompt(cleaned_segments, output_dir / f"{stem}_protocol_prompt.md"),
-                *pipeline_prompts,
-            ]
-            self._log_from_worker("Files created:")
-            for file in files:
-                self._log_from_worker(str(file.resolve()))
-            self._log_from_worker("Finished")
+            self._log_from_worker("Building ChatGPT package...")
+            package_dir, zip_path = build_chatgpt_package(
+                result=result,
+                cleaned_segments=cleaned_segments,
+                raw_json_path=raw_json_path,
+                raw_txt_path=raw_txt_path,
+                cleaned_txt_path=cleaned_txt_path,
+                meeting_dir=meeting_dir,
+            )
+
+            self._log_from_worker("Finished. Main outputs:")
+            self._log_from_worker(f"Meeting folder: {meeting_dir.resolve()}")
+            self._log_from_worker(f"ChatGPT package: {package_dir.resolve()}")
+            self._log_from_worker(f"Zip: {zip_path.resolve()}")
+            self._log_from_worker("Upload the zip to ChatGPT and write: Выполни CHATGPT_TASK.md")
         except Exception as exc:  # noqa: BLE001 - GUI must show any crash clearly.
             self._log_from_worker(f"ERROR: {exc}")
 
